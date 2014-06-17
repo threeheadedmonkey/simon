@@ -111,12 +111,24 @@ void SimonSays::createScene(void)
 	lightNode->attachObject(green);
 	green->setVisible( false );
 
-	setShowMode(true);
-	
-	counter = 0;
-	getNewOrder( 4 ); // start with a length of 4 fields to remember
-	simonTimer = 0;
+	// start the game!
+	restartGame( false );
 
+
+	/*simonLength = 4;
+	setShowMode(true);
+	simonExtension = 1;
+	simonLength = 4;
+	simonCounter = 0;
+	
+	/*for( int i = 0; i < simonLength; i++) { // fill simonOrder with randomly generated spotcolors
+		simonOrder.push_back( getRandomSpot() );
+	}
+	getNewOrder( simonLength ); 
+	simonTimer = 0;*/
+	
+	
+	//counter = 0;
 	// turnOnSpot( KEY_YELLOW );
 	// called when starting game and when starting a new show order
 
@@ -129,7 +141,7 @@ bool SimonSays::frameEnded(const Ogre::FrameEvent &evt) {
 
 	//if ( showMode ) { // if its in show mode, activate the spots according to the order in simonOrder
 		simonTimer += evt.timeSinceLastFrame; // returns time in seconds
-		if( pause && simonTimer > 3 ) {
+		if( pause && simonTimer > 2 ) {
 			mSceneMgr->getLight("yellowSpot")->setVisible( false );
 			mSceneMgr->getLight("redSpot")->setVisible( false );
 			mSceneMgr->getLight("blueSpot")->setVisible( false );
@@ -137,12 +149,15 @@ bool SimonSays::frameEnded(const Ogre::FrameEvent &evt) {
 			simonTimer = 0;
 			pause = false;
 		} 
-		else if( simonTimer > 1.5 ) {
+		
+		if( !pause && simonTimer > 2 ) {
 			simonTimer = 0;
 			//turnOnSpot( KEY_GREEN );
-			if( simonOrder.size() > 0 ) { // as long as there's stuff in the vector there's still spots to light up
-				turnOnSpot( simonOrder.front() );
-				simonOrder.erase( simonOrder.begin());
+			if( simonCounter < simonLength ) { // as long as there's stuff in the vector there's still spots to light up
+				turnOnSpot( simonOrder.at(simonCounter) );
+				playerOrder.push_back( simonOrder.at(simonCounter) );
+				//simonOrder.erase( simonOrder.begin());
+				simonCounter++;
 				pause = true;
 			} else {	// die Spieler-Runde starten
 				setShowMode(false);
@@ -193,8 +208,47 @@ bool SimonSays::getNewOrder( int sLength ) {
 	return true;
 }
 
-void SimonSays::restartGame() {
-	// restarts the game and increases simonCount
+OIS::KeyCode SimonSays::getRandomSpot() {
+	srand(time(NULL));
+	int randPos;
+	randPos = rand() % 4;
+	OIS::KeyCode retColor;
+
+	if( randPos == 0 ) {
+		// yellow
+		//mSceneMgr->getLight("yellowSpot")->setVisible(true);
+		retColor = KEY_YELLOW;
+	} else if( randPos == 1 ) {
+		// red
+		//mSceneMgr->getLight("redSpot")->setVisible(true);
+		retColor = KEY_RED;
+	} else if( randPos == 2 ) {
+		// blue
+		//mSceneMgr->getLight("blueSpot")->setVisible(true);
+		retColor = KEY_BLUE;
+	} else {
+		// green
+		//mSceneMgr->getLight("greenSpot")->setVisible(true);
+		retColor = KEY_GREEN;
+	}
+
+	return retColor;
+}
+
+void SimonSays::restartGame( bool restart ) {
+	// restart is false if the game's started for the first time
+	simonOrder.clear();
+	simonLength = 4;
+	setShowMode(true);
+	simonExtension = 1;
+	simonCounter = 0;
+	getNewOrder( simonLength ); 
+	simonTimer = 0;
+	
+	/*for( int i = 0; i < simonLength; i++) { // fill simonOrder with randomly generated spotcolors
+		simonOrder.push_back( getRandomSpot() );
+	}*/
+	
 }
 
 void SimonSays::turnOnSpot( const OIS::KeyCode color ) {
@@ -248,6 +302,26 @@ void SimonSays::setShowMode( bool show ) {
 	}
 }
 
+// this method checks whether the player pressed the right key
+bool SimonSays::checkKey( const OIS::KeyCode keyPressed ) {
+	/*turnOnSpot( simonOrder.front() );
+	playerOrder.push_back( simonOrder.front() );
+	simonOrder.erase( simonOrder.begin());*/
+	bool rightKey;
+
+	if( playerOrder.front() != keyPressed ) {
+		//if there's a mistake, set the ambient light to red and restart the game
+		mSceneMgr->setAmbientLight(Ogre::ColourValue(1,0.2,0.2));
+		rightKey = false;
+	} else {
+		rightKey = true;
+		playerOrder.erase( playerOrder.begin() );
+		// getNewOrder(simonExtension);
+	}
+
+	return rightKey;
+}
+
 bool SimonSays::keyPressed( const OIS::KeyEvent &arg ) {
 	bool ret = BaseApplication::keyPressed( arg );
 
@@ -255,35 +329,38 @@ bool SimonSays::keyPressed( const OIS::KeyEvent &arg ) {
 
 	// if the order is wrong, set the ambient light to red or something like that
 
-	if (arg.key == KEY_SWITCH) {
+	if (arg.key == KEY_START ) {
+		// re-starts the game
+		restartGame( true );
+
 		// toggle between show and playmode
-		if( showMode == true ) {
+		/*if( showMode == true ) {
 			setShowMode( false );
 			// turn off showMode, turn on spots, set player
 		} else {
 			setShowMode( true );
-		}
-	} else if (arg.key == KEY_YELLOW) {
-		if( !showMode ) {
+		}*/
+	} 
+
+	if( !showMode ) {
+		if (arg.key == KEY_YELLOW) {
 			Ogre::SceneNode* playerNode = mSceneMgr->getSceneNode("PlayerNode");
 			playerNode->setPosition(0,20,0);
-		}
-	} else if (arg.key == KEY_RED) {
-		if( !showMode ) {
+		} else if (arg.key == KEY_RED) {
 			Ogre::SceneNode* playerNode = mSceneMgr->getSceneNode("PlayerNode");
 			playerNode->setPosition(65,20,0);
-		}
-	} else if (arg.key == KEY_BLUE) {
-		if( !showMode ) {
+		} else if (arg.key == KEY_BLUE) {
 			Ogre::SceneNode* playerNode = mSceneMgr->getSceneNode("PlayerNode");
 			playerNode->setPosition(0,20,65);
-		}
-	} else if (arg.key == KEY_GREEN) {
-		if( !showMode ) {
+		} else if (arg.key == KEY_GREEN) {
 			Ogre::SceneNode* playerNode = mSceneMgr->getSceneNode("PlayerNode");
 			playerNode->setPosition(65,20,65);
 		}
-	}
+
+		// check key after moving the player
+		checkKey( arg.key );
+
+	} // eof !showMode
 
 	return ret;
 }
