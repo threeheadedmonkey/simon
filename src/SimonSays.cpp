@@ -37,6 +37,24 @@ void SimonSays::createScene(void)
 	playerNode->translate(35,20,-65);
 	player->setVisible( false );
 
+
+	// RenderTexture stuff
+	Ogre::TexturePtr rtt_texture = 
+		Ogre::TextureManager::getSingleton().createManual("RttTex",
+		Ogre::ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME,
+		Ogre::TEX_TYPE_2D,mWindow->getWidth(),mWindow->getHeight(),0,
+		Ogre::PF_R8G8B8, // rgb24
+		Ogre::TU_RENDERTARGET);
+
+	//Ogre::RenderTexture *
+	renderTexture = rtt_texture->getBuffer()->getRenderTarget();
+	renderTexture->addViewport(mCamera); // cam see BaseApplication
+	renderTexture->getViewport(0)->setClearEveryFrame(true); // clear every frame
+	renderTexture->getViewport(0)->setOverlaysEnabled(true); // show overlay elems
+	renderTexture->setAutoUpdated(true); // so you don't have to call update() every time
+
+
+
 	// use spots placed in 2x2 field to show the order
 	// 
 	//  yellow  | red		keys:	u	|	i
@@ -93,48 +111,50 @@ void SimonSays::createScene(void)
 	lightNode->attachObject(green);
 	green->setVisible( false );
 
-	showMode = true;
+	setShowMode(true);
 	
-	simonTimer = 0;
+	counter = 0;
 	getNewOrder( 4 ); // start with a length of 4 fields to remember
+	simonTimer = 0;
 
-	turnOnSpot( KEY_YELLOW );
+	// turnOnSpot( KEY_YELLOW );
 	// called when starting game and when starting a new show order
-	
-	timer.reset();
-	startTimer();
+
+	pause = false; // set pause to false
 }
 
-bool SimonSays::frameRenderingQueued(const Ogre::FrameEvent &evt) {
-	bool ret = BaseApplication::frameRenderingQueued(evt);
+bool SimonSays::frameEnded(const Ogre::FrameEvent &evt) {
+	bool ret = BaseApplication::frameEnded(evt);
 	//turnOnSpot( KEY_BLUE );
 
 	//if ( showMode ) { // if its in show mode, activate the spots according to the order in simonOrder
 		simonTimer += evt.timeSinceLastFrame; // returns time in seconds
-		if( simonTimer > 5) {
+		if( pause && simonTimer > 3 ) {
+			mSceneMgr->getLight("yellowSpot")->setVisible( false );
+			mSceneMgr->getLight("redSpot")->setVisible( false );
+			mSceneMgr->getLight("blueSpot")->setVisible( false );
+			mSceneMgr->getLight("greenSpot")->setVisible( false );
 			simonTimer = 0;
-			turnOnSpot( KEY_GREEN );
-			/*if( simonOrder.size() > 0 ) { // as long as there's stuff in the vector there's still spots to light up
+			pause = false;
+		} 
+		else if( simonTimer > 1.5 ) {
+			simonTimer = 0;
+			//turnOnSpot( KEY_GREEN );
+			if( simonOrder.size() > 0 ) { // as long as there's stuff in the vector there's still spots to light up
 				turnOnSpot( simonOrder.front() );
 				simonOrder.erase( simonOrder.begin());
+				pause = true;
 			} else {	// die Spieler-Runde starten
-				showMode = false;
-			}*/
-		}
+				setShowMode(false);
+			}
+
+		} // eof simonTimer > x
 	//}
 
+		/*renderTexture->writeContentsToFile(counter+".jpg");
+		counter++;*/
+
 	return ret;
-}
-
-void SimonSays::startTimer() {
-	while( showMode ) {
-		if( timer.getMilliseconds() > 2000 ) {
-			timer.reset();
-			//turnOnSpot( KEY_RED );
-
-			
-		}
-	}
 }
 
 /* 
@@ -209,6 +229,25 @@ void SimonSays::turnOnSpot( const OIS::KeyCode color ) {
 	}
 }
 
+void SimonSays::setShowMode( bool show ) {
+	showMode = show;
+
+	if( showMode == false ) {
+		mSceneMgr->getLight("yellowSpot")->setVisible( true );
+		mSceneMgr->getLight("redSpot")->setVisible( true );
+		mSceneMgr->getLight("blueSpot")->setVisible( true );
+		mSceneMgr->getLight("greenSpot")->setVisible( true );
+		mSceneMgr->getEntity("Player")->setVisible( true );
+	} else if ( showMode == true ) {
+		mSceneMgr->getLight("yellowSpot")->setVisible( false );
+		mSceneMgr->getLight("redSpot")->setVisible( false );
+		mSceneMgr->getLight("blueSpot")->setVisible( false );
+		mSceneMgr->getLight("greenSpot")->setVisible( false );
+		mSceneMgr->getEntity("Player")->setVisible( false );
+		mSceneMgr->getSceneNode("PlayerNode")->setPosition( 35,20,-65 );
+	}
+}
+
 bool SimonSays::keyPressed( const OIS::KeyEvent &arg ) {
 	bool ret = BaseApplication::keyPressed( arg );
 
@@ -219,21 +258,10 @@ bool SimonSays::keyPressed( const OIS::KeyEvent &arg ) {
 	if (arg.key == KEY_SWITCH) {
 		// toggle between show and playmode
 		if( showMode == true ) {
+			setShowMode( false );
 			// turn off showMode, turn on spots, set player
-			mSceneMgr->getLight("yellowSpot")->setVisible( true );
-			mSceneMgr->getLight("redSpot")->setVisible( true );
-			mSceneMgr->getLight("blueSpot")->setVisible( true );
-			mSceneMgr->getLight("greenSpot")->setVisible( true );
-			mSceneMgr->getEntity("Player")->setVisible( true );
-			showMode = false;
 		} else {
-			mSceneMgr->getLight("yellowSpot")->setVisible( false );
-			mSceneMgr->getLight("redSpot")->setVisible( false );
-			mSceneMgr->getLight("blueSpot")->setVisible( false );
-			mSceneMgr->getLight("greenSpot")->setVisible( false );
-			mSceneMgr->getEntity("Player")->setVisible( false );
-			mSceneMgr->getSceneNode("PlayerNode")->setPosition( 35,20,-65 );
-			showMode = true;
+			setShowMode( true );
 		}
 	} else if (arg.key == KEY_YELLOW) {
 		if( !showMode ) {
