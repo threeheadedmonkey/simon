@@ -20,12 +20,19 @@ protected:
 	void setShowMode( bool show );
 	bool checkKey( const OIS::KeyCode keyPressed );
 
+
+	bool gameStarted; // for the first start --> temporary, needs to be improved
+
 	bool pause; // to include pauses between spots, just in case the same color shows up twice
 	bool showMode;
+	bool turnEnded; // to check if a turn has ended and the 'S' key is activated
+	bool correctOrder; // whether the player entered the correct order, could be done using playerOrder too (check if it's empty)
 	float simonTimer; // doesn't actually need to be declared in header file, sets the intervall for how long a light pops up
 	int simonCounter; // counter for how many spots have been shown yet
-	int simonLength; // how many spots you have to remember, e.g. round 1: 4 colours to remember -> simonCounter = 4; round2: simonCounter+=2,...
-	int simonExtension; // how many spots are added per successful turn
+	
+	
+	static const int S_LENGTH = 4; // how many spots you have to remember, e.g. round 1: 4 colours to remember -> simonCounter = 4; round2: simonCounter+=2,...
+	static const int S_EXTENSION = 1; // how many spots are added per successful turn
 
 	std::vector<OIS::KeyCode> simonOrder;	// the order the game sets
 	std::vector<OIS::KeyCode> playerOrder;	// the order the player presses

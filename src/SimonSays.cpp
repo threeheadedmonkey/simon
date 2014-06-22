@@ -110,29 +110,40 @@ void SimonSays::createScene(void)
 	green->setSpotlightRange(Ogre::Degree(15), Ogre::Degree(15));
 	lightNode->attachObject(green);
 	green->setVisible( false );
-
-	// start the game!
-	restartGame( false );
-
-
-	/*simonLength = 4;
-	setShowMode(true);
-	simonExtension = 1;
-	simonLength = 4;
-	simonCounter = 0;
 	
-	/*for( int i = 0; i < simonLength; i++) { // fill simonOrder with randomly generated spotcolors
-		simonOrder.push_back( getRandomSpot() );
-	}
-	getNewOrder( simonLength ); 
-	simonTimer = 0;*/
-	
-	
-	//counter = 0;
-	// turnOnSpot( KEY_YELLOW );
-	// called when starting game and when starting a new show order
+	gameStarted = false;
+	mSceneMgr->getLight("yellowSpot")->setVisible( true );
+	mSceneMgr->getLight("redSpot")->setVisible( true );
+	mSceneMgr->getLight("blueSpot")->setVisible( true );
+	mSceneMgr->getLight("greenSpot")->setVisible( true );
+	turnEnded = false;
+	//mSceneMgr->getEntity("Player")->setVisible( false );
 
+	correctOrder = true;
 	pause = false; // set pause to false
+}
+
+void SimonSays::restartGame( bool restart ) {
+	mSceneMgr->setAmbientLight(Ogre::ColourValue(0.3,0.3,0.3));
+	// restart is true if the game is set up anew (e.g. first turn or the player made a mistake)
+	if( restart ) {
+		if( simonOrder.size() > 0 ) simonOrder.clear();	
+		getNewOrder( S_LENGTH ); 
+		// only needs to set once!!
+		//simonLength = 4;
+		//simonExtension = 1;
+	} else { // otherwise add 2 spots to simonOrder!
+		getNewOrder( S_EXTENSION ); // add new spots to the order
+		//mSceneMgr->setAmbientLight(Ogre::ColourValue(0.3,0.3,1));
+	}
+	
+	//mSceneMgr->setAmbientLight(Ogre::ColourValue(0.3,0.3,0.3));
+	setShowMode(true);
+	simonCounter = 0;
+	simonTimer = 0;
+	turnEnded = false;
+	correctOrder = true; // set order to correct again
+	playerOrder.clear();
 }
 
 bool SimonSays::frameEnded(const Ogre::FrameEvent &evt) {
@@ -141,7 +152,7 @@ bool SimonSays::frameEnded(const Ogre::FrameEvent &evt) {
 
 	//if ( showMode ) { // if its in show mode, activate the spots according to the order in simonOrder
 		simonTimer += evt.timeSinceLastFrame; // returns time in seconds
-		if( pause && simonTimer > 2 ) {
+		if( pause && simonTimer > 0.5 ) {
 			mSceneMgr->getLight("yellowSpot")->setVisible( false );
 			mSceneMgr->getLight("redSpot")->setVisible( false );
 			mSceneMgr->getLight("blueSpot")->setVisible( false );
@@ -150,10 +161,9 @@ bool SimonSays::frameEnded(const Ogre::FrameEvent &evt) {
 			pause = false;
 		} 
 		
-		if( !pause && simonTimer > 2 ) {
+		if( !pause && simonTimer > 1 ) {
 			simonTimer = 0;
-			//turnOnSpot( KEY_GREEN );
-			if( simonCounter < simonLength ) { // as long as there's stuff in the vector there's still spots to light up
+			if( simonCounter < simonOrder.size() ) { // as long as there's stuff in the vector there's still spots to light up
 				turnOnSpot( simonOrder.at(simonCounter) );
 				playerOrder.push_back( simonOrder.at(simonCounter) );
 				//simonOrder.erase( simonOrder.begin());
@@ -165,9 +175,9 @@ bool SimonSays::frameEnded(const Ogre::FrameEvent &evt) {
 
 		} // eof simonTimer > x
 	//}
-
-		/*renderTexture->writeContentsToFile(counter+".jpg");
-		counter++;*/
+		if( turnEnded ) {
+			setShowMode(true); // this turns off all the lights and stuff
+		}
 
 	return ret;
 }
@@ -208,7 +218,7 @@ bool SimonSays::getNewOrder( int sLength ) {
 	return true;
 }
 
-OIS::KeyCode SimonSays::getRandomSpot() {
+/*OIS::KeyCode SimonSays::getRandomSpot() {
 	srand(time(NULL));
 	int randPos;
 	randPos = rand() % 4;
@@ -233,23 +243,9 @@ OIS::KeyCode SimonSays::getRandomSpot() {
 	}
 
 	return retColor;
-}
+}*/
 
-void SimonSays::restartGame( bool restart ) {
-	// restart is false if the game's started for the first time
-	simonOrder.clear();
-	simonLength = 4;
-	setShowMode(true);
-	simonExtension = 1;
-	simonCounter = 0;
-	getNewOrder( simonLength ); 
-	simonTimer = 0;
-	
-	/*for( int i = 0; i < simonLength; i++) { // fill simonOrder with randomly generated spotcolors
-		simonOrder.push_back( getRandomSpot() );
-	}*/
-	
-}
+
 
 void SimonSays::turnOnSpot( const OIS::KeyCode color ) {
 	if( color == KEY_YELLOW ) {
@@ -311,11 +307,15 @@ bool SimonSays::checkKey( const OIS::KeyCode keyPressed ) {
 
 	if( playerOrder.front() != keyPressed ) {
 		//if there's a mistake, set the ambient light to red and restart the game
-		mSceneMgr->setAmbientLight(Ogre::ColourValue(1,0.2,0.2));
 		rightKey = false;
+		correctOrder = false;
+		turnEnded = true; // you're turn's over
 	} else {
 		rightKey = true;
 		playerOrder.erase( playerOrder.begin() );
+		if( playerOrder.size() < 1 ) {
+			turnEnded = true;
+		}
 		// getNewOrder(simonExtension);
 	}
 
@@ -325,24 +325,18 @@ bool SimonSays::checkKey( const OIS::KeyCode keyPressed ) {
 bool SimonSays::keyPressed( const OIS::KeyEvent &arg ) {
 	bool ret = BaseApplication::keyPressed( arg );
 
-	//bool showMode = true; // lights are showing the order
-
-	// if the order is wrong, set the ambient light to red or something like that
-
 	if (arg.key == KEY_START ) {
-		// re-starts the game
-		restartGame( true );
-
-		// toggle between show and playmode
-		/*if( showMode == true ) {
-			setShowMode( false );
-			// turn off showMode, turn on spots, set player
-		} else {
-			setShowMode( true );
-		}*/
+		if( !gameStarted ) {
+			restartGame( true );
+			gameStarted = true;
+		}
+		// (re-)starts the game
+		if( turnEnded ) {
+			restartGame( !correctOrder ); // if the order is correct, NO restart
+		}
 	} 
 
-	if( !showMode ) {
+	if( !showMode && !turnEnded ) {
 		if (arg.key == KEY_YELLOW) {
 			Ogre::SceneNode* playerNode = mSceneMgr->getSceneNode("PlayerNode");
 			playerNode->setPosition(0,20,0);
@@ -358,7 +352,24 @@ bool SimonSays::keyPressed( const OIS::KeyEvent &arg ) {
 		}
 
 		// check key after moving the player
-		checkKey( arg.key );
+		if( playerOrder.size() > 0 ) {
+			if( !checkKey(arg.key) ) {
+				mSceneMgr->getLight("yellowSpot")->setVisible( false );
+				mSceneMgr->getLight("redSpot")->setVisible( false );
+				mSceneMgr->getLight("blueSpot")->setVisible( false );
+				mSceneMgr->getLight("greenSpot")->setVisible( false );
+				mSceneMgr->setAmbientLight(Ogre::ColourValue(1,0.2,0.2));
+			};
+		} 
+		
+		if( playerOrder.size() < 1 ) {
+			mSceneMgr->getLight("yellowSpot")->setVisible( false );
+			mSceneMgr->getLight("redSpot")->setVisible( false );
+			mSceneMgr->getLight("blueSpot")->setVisible( false );
+			mSceneMgr->getLight("greenSpot")->setVisible( false );
+			mSceneMgr->getEntity("Player")->setVisible( false );
+			mSceneMgr->setAmbientLight(Ogre::ColourValue(0.2,1,0.2));
+		}
 
 	} // eof !showMode
 
