@@ -7,6 +7,7 @@ SimonSays::SimonSays(void)
 //-------------------------------------------------------------------------------------
 SimonSays::~SimonSays(void)
 {
+	delete [] encBuffer;
 }
 
 //-------------------------------------------------------------------------------------
@@ -36,24 +37,6 @@ void SimonSays::createScene(void)
 	playerNode->attachObject(player);
 	playerNode->translate(35,20,-65);
 	player->setVisible( false );
-
-
-	// RenderTexture stuff
-	Ogre::TexturePtr rtt_texture = 
-		Ogre::TextureManager::getSingleton().createManual("RttTex",
-		Ogre::ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME,
-		Ogre::TEX_TYPE_2D,mWindow->getWidth(),mWindow->getHeight(),0,
-		Ogre::PF_R8G8B8, // rgb24
-		Ogre::TU_RENDERTARGET);
-
-	//Ogre::RenderTexture *
-	renderTexture = rtt_texture->getBuffer()->getRenderTarget();
-	renderTexture->addViewport(mCamera); // cam see BaseApplication
-	renderTexture->getViewport(0)->setClearEveryFrame(true); // clear every frame
-	renderTexture->getViewport(0)->setOverlaysEnabled(true); // show overlay elems
-	renderTexture->setAutoUpdated(true); // so you don't have to call update() every time
-
-
 
 	// use spots placed in 2x2 field to show the order
 	// 
@@ -111,16 +94,54 @@ void SimonSays::createScene(void)
 	lightNode->attachObject(green);
 	green->setVisible( false );
 	
-	gameStarted = false;
+	// everything's set up, let's get the game and the streaming started!
+	
 	mSceneMgr->getLight("yellowSpot")->setVisible( true );
 	mSceneMgr->getLight("redSpot")->setVisible( true );
 	mSceneMgr->getLight("blueSpot")->setVisible( true );
 	mSceneMgr->getLight("greenSpot")->setVisible( true );
+	
 	turnEnded = false;
-	//mSceneMgr->getEntity("Player")->setVisible( false );
-
+	gameStarted = false;
 	correctOrder = true;
 	pause = false; // set pause to false
+	// --> game ist started by user input!!
+
+	frameCounter = 1;
+
+	// set up streaming
+	setUpStream();
+}
+
+void SimonSays::setUpStream() {
+	rtt_texture = 
+		Ogre::TextureManager::getSingleton().createManual("RttTex",
+		Ogre::ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME,
+		Ogre::TEX_TYPE_2D,mWindow->getWidth(),mWindow->getHeight(),0,
+		Ogre::PF_B8G8R8, // rgb24
+		Ogre::TU_RENDERTARGET);
+
+	//Ogre::RenderTexture *
+	renderTexture = rtt_texture->getBuffer()->getRenderTarget();
+	renderTexture->addViewport(mCamera); // cam see BaseApplication
+	renderTexture->getViewport(0)->setClearEveryFrame(true); // clear every frame
+	renderTexture->getViewport(0)->setOverlaysEnabled(true); // show overlay elems
+	renderTexture->setAutoUpdated(true); // so you don't have to call update() every time
+
+	// encoding stuff
+	encBuffer = (char *) malloc(1024*1024*3); 
+	encPointer = encBuffer;
+	inBuffer = 0;
+	
+	decoder = new DecodeVideoXVID();
+	decoder->global_init(true);
+	decoder->dec_init(mWindow->getWidth(), mWindow->getHeight());
+
+	encoder = new EncodeVideoXVID();
+	encoder->global_init(true);
+	encoder->enc_init(mWindow->getWidth(), mWindow->getHeight());
+
+	sender.init("127.0.0.1",5000);
 }
 
 void SimonSays::restartGame( bool restart ) {
@@ -148,7 +169,6 @@ void SimonSays::restartGame( bool restart ) {
 
 bool SimonSays::frameEnded(const Ogre::FrameEvent &evt) {
 	bool ret = BaseApplication::frameEnded(evt);
-	//turnOnSpot( KEY_BLUE );
 
 	//if ( showMode ) { // if its in show mode, activate the spots according to the order in simonOrder
 		simonTimer += evt.timeSinceLastFrame; // returns time in seconds
@@ -180,6 +200,76 @@ bool SimonSays::frameEnded(const Ogre::FrameEvent &evt) {
 		}
 
 	return ret;
+}
+
+void SimonSays::log(std::string msg) {
+	std::ofstream logfile;
+	logfile.open("simon.log", std::ios::app );
+	logfile << msg << "\n";
+	logfile.close();
+}
+
+
+bool SimonSays::frameRenderingQueued(const Ogre::FrameEvent &evt) {
+	/*if( inBuffer > 0 ) {
+		memcpy(encBuffer, decPointer, inBuffer); // dst, src, size
+	}
+
+	decPointer = encBuffer;*/
+
+	unsigned char *pDest = new unsigned char[mWindow->getWidth()*mWindow->getHeight()*3];
+	// Ogre::PixelBox pb(mWindow->getWidth(), mWindow->getHeight(), 1, Ogre::PF_B8G8R8, pDest);
+
+	const Ogre::PixelBox encodeDest = Ogre::PixelBox(mWindow->getWidth(),
+									mWindow->getHeight(), 1,
+									Ogre::PF_B8G8R8, (void*)(pDest));
+
+	rtt_texture->getBuffer()->blitToMemory(encodeDest);
+
+	// encode
+	unsigned char *frame = new unsigned char[mWindow->getWidth()*mWindow->getHeight()*3];
+	int encCounter = encoder->enc_main(pDest, frame); // Image, bitstream
+	int sendCount = 0;
+
+	memcpy(encBuffer+inBuffer, frame, encCounter); // dst, src, size
+	inBuffer += encCounter;
+
+	sendCount = sender.send(encBuffer,inBuffer); // buffer, len
+	
+	// optional logging to check whether the server sends something
+	logMsg.str("");
+	logMsg << "sent " << sendCount << " bytes.";
+	log( logMsg.str() );
+
+	inBuffer -= sendCount;
+	memmove(encBuffer, encBuffer + sendCount, inBuffer); // dst, src, size
+	
+	delete[] pDest;
+	delete[] frame;
+
+	/*//  decode
+	unsigned char *decFrame = new unsigned char[mWindow->getWidth()*mWindow->getHeight()*3];
+	int decNum =0;
+	
+	do {
+		decNum = decoder->dec_main(decPointer, inBuffer, decFrame);
+		decPointer += decNum;
+		inBuffer -= decNum;
+	} while( decNum > 0 && inBuffer > 1);
+
+	// check if there's something going on
+	
+	// uncomment from here ...........................................
+	Ogre::Image *decImg = new Ogre::Image();
+	decImg->loadDynamicImage(decFrame, mWindow->getWidth(), mWindow->getHeight(), Ogre::PF_B8G8R8);
+	
+	sstream.str("");
+	sstream << "frame" << frameCounter << ".jpg";
+	decImg->save(sstream.str());
+	frameCounter++; */
+	// .................... to here if you (don't) want to output files 
+
+	return BaseApplication::frameRenderingQueued(evt);
 }
 
 /* 
@@ -217,35 +307,6 @@ bool SimonSays::getNewOrder( int sLength ) {
 
 	return true;
 }
-
-/*OIS::KeyCode SimonSays::getRandomSpot() {
-	srand(time(NULL));
-	int randPos;
-	randPos = rand() % 4;
-	OIS::KeyCode retColor;
-
-	if( randPos == 0 ) {
-		// yellow
-		//mSceneMgr->getLight("yellowSpot")->setVisible(true);
-		retColor = KEY_YELLOW;
-	} else if( randPos == 1 ) {
-		// red
-		//mSceneMgr->getLight("redSpot")->setVisible(true);
-		retColor = KEY_RED;
-	} else if( randPos == 2 ) {
-		// blue
-		//mSceneMgr->getLight("blueSpot")->setVisible(true);
-		retColor = KEY_BLUE;
-	} else {
-		// green
-		//mSceneMgr->getLight("greenSpot")->setVisible(true);
-		retColor = KEY_GREEN;
-	}
-
-	return retColor;
-}*/
-
-
 
 void SimonSays::turnOnSpot( const OIS::KeyCode color ) {
 	if( color == KEY_YELLOW ) {
@@ -375,6 +436,54 @@ bool SimonSays::keyPressed( const OIS::KeyEvent &arg ) {
 
 	return ret;
 }
+
+// ########################### listen for client input ############################
+
+// TO DO: finish listener thread to get keyboard input from client!!
+DWORD WINAPI Listener(LPVOID lpParam) 
+{
+	UDPReceive receiver = UDPReceive();
+	receiver.init(5001); // set to port specified in client
+
+	Ogre::SceneManager* mSceneMgr = (Ogre::SceneManager*)lpParam;
+	Ogre::SceneNode* penguin = mSceneMgr->getSceneNode("PlayerNode");
+	
+	char* data = (char*) malloc(128);
+	double* ptime = new double(1);
+	std::string cInput;
+
+	int counter;
+
+	while(true) {
+		counter = receiver.receive(data,strlen(data),ptime); 
+		(*ptime)++;
+		cInput.assign(data,0,counter);
+		
+		// make sure variables are set the same as in client!
+		if ((cInput.find("KEY_YELLOW",0)!=std::string::npos)) {
+			penguin->setVisible( true );
+			penguin->setPosition(0,20,0);
+		}
+
+		if ((cInput.find("KEY_RED",0)!=std::string::npos)) {
+			penguin->setVisible( true );
+			penguin->setPosition(65,20,0);
+		}
+
+		if ((cInput.find("KEY_BLUE",0)!=std::string::npos)) {
+			penguin->setVisible( true );
+			penguin->setPosition(0,20,65);
+		}
+
+		if ((cInput.find("KEY_GREEN",0)!=std::string::npos)) {
+			penguin->setVisible( true );
+			penguin->setPosition(65,20,65);
+		}
+	}
+
+	return 0; 
+} 
+
 
 #if OGRE_PLATFORM == OGRE_PLATFORM_WIN32
 #define WIN32_LEAN_AND_MEAN
