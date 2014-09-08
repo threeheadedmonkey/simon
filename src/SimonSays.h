@@ -7,6 +7,9 @@
 #include <iostream>
 #include <fstream>
 
+// for logging
+#include <time.h>
+
 class SimonSays : public BaseApplication
 {
 public:
@@ -24,6 +27,7 @@ protected:
 	// logging
 	void log( std::string msg );
 	std::stringstream logMsg;
+	time_t currTime;
 	//std::ofstream logfile;
 
 	bool getNewOrder( int sLength );
